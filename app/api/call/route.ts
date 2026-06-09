@@ -17,8 +17,7 @@ export async function POST(request: Request) {
 
     // STEP 3: Trigger actual Twilio call
     const call = await client.calls.create({
-      // We will replace this twiml with our WebSocket later!
-      twiml: `<Response><Say>Hello! Your Dial Pilot AI agent is connecting. Have a great day!</Say></Response>`,
+      twiml: `<Response><Say>Connecting to Web Socket now.</Say><Connect><Stream url="wss://repressed-modular-mowing.ngrok-free.dev" /></Connect></Response>`,
       to: phoneNumber,
       from: twilioNumber as string,
     });
