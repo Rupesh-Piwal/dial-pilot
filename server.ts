@@ -2,6 +2,7 @@ import express from "express";
 import http from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import dotenv from "dotenv";
+import { twilioToGemini, geminiToTwilio } from "./audio-utils";
 
 dotenv.config({ path: ".env.local" });
 
@@ -15,10 +16,79 @@ app.get("/", (req, res) => {
   res.send("Twilio Media Stream WebSocket Server is running.");
 });
 
-wss.on("connection", (ws: WebSocket) => {
-  console.log("New WebSocket connection established.");
+wss.on("connection", (twilioWs: WebSocket) => {
+  console.log("New Twilio WebSocket connection established.");
+  
+  let streamSid: string | null = null;
+  
+  // Initialize Gemini WebSocket
+  const geminiWsUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${process.env.GEMINI_API_KEY}`;
+  const geminiWs = new WebSocket(geminiWsUrl);
 
-  ws.on("message", (message: string) => {
+  geminiWs.on("open", () => {
+    console.log("Connected to Gemini Multimodal Live API.");
+    // Send Setup Message
+      const setupMessage = {
+      setup: {
+        model: "models/gemini-2.5-flash-native-audio-preview-12-2025",
+        systemInstruction: {
+          parts: [{ text: "You are a helpful AI voice assistant named Dial Pilot. You are having a phone conversation with a user. Keep your answers extremely concise and conversational. Do not use markdown." }]
+        },
+        generationConfig: {
+          responseModalities: ["AUDIO"]
+        }
+      }
+    };
+    geminiWs.send(JSON.stringify(setupMessage));
+  });
+
+  geminiWs.on("message", (data: WebSocket.Data) => {
+    try {
+      const response = JSON.parse(data.toString());
+      
+      // Log setup complete or errors
+      if (response.setupComplete) console.log("Gemini Setup Complete!");
+      if (response.error) console.error("Gemini Error:", response.error);
+
+      if (response.serverContent && response.serverContent.modelTurn) {
+        const parts = response.serverContent.modelTurn.parts;
+        for (const part of parts) {
+          if (part.inlineData && part.inlineData.mimeType.startsWith("audio/pcm")) {
+            if (streamSid) {
+              const mulawData = geminiToTwilio(part.inlineData.data);
+              twilioWs.send(JSON.stringify({
+                event: "media",
+                streamSid: streamSid,
+                media: { payload: mulawData }
+              }));
+            }
+          }
+        }
+      }
+      
+      if (response.serverContent && response.serverContent.interrupted) {
+        console.log("Gemini interrupted by user.");
+        if (streamSid) {
+          twilioWs.send(JSON.stringify({
+            event: "clear",
+            streamSid: streamSid
+          }));
+        }
+      }
+    } catch (error) {
+      console.error("Error parsing Gemini message:", error);
+    }
+  });
+
+  geminiWs.on("error", (error) => {
+    console.error("Gemini WebSocket error:", error);
+  });
+
+  geminiWs.on("close", (code, reason) => {
+    console.log(`Gemini WebSocket closed with code ${code} and reason: ${reason.toString()}`);
+  });
+
+  twilioWs.on("message", (message: string) => {
     try {
       const msg = JSON.parse(message);
       
@@ -27,29 +97,45 @@ wss.on("connection", (ws: WebSocket) => {
           console.log("Twilio Media Stream Connected");
           break;
         case "start":
-          console.log(`Media Stream Started: ${msg.start.streamSid}`);
+          streamSid = msg.start.streamSid;
+          console.log(`Media Stream Started: ${streamSid}`);
           break;
         case "media":
-          // msg.media.payload contains base64 encoded audio (mulaw, 8000Hz)
-          // console.log("Received media payload...");
+          // Send audio to Gemini if connected
+          if (geminiWs.readyState === WebSocket.OPEN) {
+            const pcmData = twilioToGemini(msg.media.payload);
+            const mediaMessage = {
+              realtimeInput: {
+                mediaChunks: [{
+                  mimeType: "audio/pcm;rate=16000",
+                  data: pcmData
+                }]
+              }
+            };
+            geminiWs.send(JSON.stringify(mediaMessage));
+          }
           break;
         case "stop":
-          console.log("Media Stream Stopped");
+          console.log("Twilio Media Stream Stopped");
+          if (geminiWs.readyState === WebSocket.OPEN) {
+            geminiWs.close();
+          }
           break;
-        default:
-          console.log("Received unknown event:", msg.event);
       }
     } catch (error) {
-      console.error("Error parsing message:", error);
+      console.error("Error parsing Twilio message:", error);
     }
   });
 
-  ws.on("close", () => {
-    console.log("WebSocket connection closed.");
+  twilioWs.on("close", () => {
+    console.log("Twilio WebSocket connection closed.");
+    if (geminiWs.readyState === WebSocket.OPEN) {
+      geminiWs.close();
+    }
   });
 
-  ws.on("error", (error) => {
-    console.error("WebSocket error:", error);
+  twilioWs.on("error", (error) => {
+    console.error("Twilio WebSocket error:", error);
   });
 });
 
