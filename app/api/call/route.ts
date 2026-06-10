@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import twilio from "twilio";
 
-// Initialize Twilio client
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
 const authToken = process.env.TWILIO_AUTH_TOKEN;
 const twilioNumber = process.env.TWILIO_PHONE_NUMBER;
@@ -28,7 +27,6 @@ export async function POST(request: Request) {
 
     const safePrompt = escapeXml(prompt);
 
-    // STEP 3: Trigger actual Twilio call
     const call = await client.calls.create({
       twiml: `<Response><Say>Connecting to Web Socket now.</Say><Connect><Stream url="wss://repressed-modular-mowing.ngrok-free.dev"><Parameter name="prompt" value="${safePrompt}" /></Stream></Connect></Response>`,
       to: phoneNumber,
