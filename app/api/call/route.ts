@@ -27,8 +27,13 @@ export async function POST(request: Request) {
 
     const safePrompt = escapeXml(prompt);
 
+    const wsUrl = process.env.WEBSOCKET_SERVER_URL;
+    if (!wsUrl) {
+      throw new Error("WEBSOCKET_SERVER_URL environment variable is missing.");
+    }
+
     const call = await client.calls.create({
-      twiml: `<Response><Say>Connecting to Web Socket now.</Say><Connect><Stream url="wss://repressed-modular-mowing.ngrok-free.dev"><Parameter name="prompt" value="${safePrompt}" /></Stream></Connect></Response>`,
+      twiml: `<Response><Say>Connecting to Web Socket now.</Say><Connect><Stream url="${wsUrl}"><Parameter name="prompt" value="${safePrompt}" /></Stream></Connect></Response>`,
       to: phoneNumber,
       from: twilioNumber as string,
     });
