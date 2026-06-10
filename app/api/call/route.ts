@@ -15,9 +15,22 @@ export async function POST(request: Request) {
 
     console.log(`Initiating call to ${phoneNumber} from ${twilioNumber}...`);
 
+    const escapeXml = (unsafe: string) => (unsafe || "").replace(/[<>&'"]/g, c => {
+      switch (c) {
+        case '<': return '&lt;';
+        case '>': return '&gt;';
+        case '&': return '&amp;';
+        case '\'': return '&apos;';
+        case '"': return '&quot;';
+        default: return c;
+      }
+    });
+
+    const safePrompt = escapeXml(prompt);
+
     // STEP 3: Trigger actual Twilio call
     const call = await client.calls.create({
-      twiml: `<Response><Say>Connecting to Web Socket now.</Say><Connect><Stream url="wss://repressed-modular-mowing.ngrok-free.dev" /></Connect></Response>`,
+      twiml: `<Response><Say>Connecting to Web Socket now.</Say><Connect><Stream url="wss://repressed-modular-mowing.ngrok-free.dev"><Parameter name="prompt" value="${safePrompt}" /></Stream></Connect></Response>`,
       to: phoneNumber,
       from: twilioNumber as string,
     });
