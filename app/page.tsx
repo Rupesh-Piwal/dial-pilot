@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { Phone, PhoneOff, Clock, Mic, MoreVertical } from "lucide-react";
 
 interface CallHistoryItem {
   target: string;
@@ -13,12 +14,10 @@ export default function Home() {
   const [phoneNumber, setPhoneNumber] = useState("");
   const [prompt, setPrompt] = useState("");
 
-  // Call State
   const [callStatus, setCallStatus] = useState<"idle" | "dialing" | "in-progress">("idle");
   const [callSid, setCallSid] = useState<string | null>(null);
   const [duration, setDuration] = useState(0);
 
-  // History State
   const [history, setHistory] = useState<CallHistoryItem[]>([]);
 
   useEffect(() => {
@@ -28,11 +27,14 @@ export default function Home() {
     }
   }, []);
 
-  const saveHistory = (item: CallHistoryItem) => {
-    const newHistory = [item, ...history].slice(0, 10); // Keep last 10
-    setHistory(newHistory);
-    localStorage.setItem("dialPilotHistory", JSON.stringify(newHistory));
-  };
+  const saveHistory = useCallback(
+    (item: CallHistoryItem) => {
+      const newHistory = [item, ...history].slice(0, 10);
+      setHistory(newHistory);
+      localStorage.setItem("dialPilotHistory", JSON.stringify(newHistory));
+    },
+    [history]
+  );
 
   const handleStartCall = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,18 +62,28 @@ export default function Home() {
     }
   };
 
-  const endCall = (status: string) => {
-    setCallStatus("idle");
-    setCallSid(null);
-    if (duration > 0 || status === "Completed") {
-      saveHistory({
-        target: phoneNumber,
-        status: status,
-        duration: duration,
-        date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false })
-      });
-    }
-  };
+  const endCall = useCallback(
+    (status: string) => {
+      setCallStatus("idle");
+      setCallSid(null);
+      if (duration > 0 || status === "Completed") {
+        saveHistory({
+          target: phoneNumber,
+          status: status,
+          duration: duration,
+          date: new Date().toLocaleString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+          }),
+        });
+      }
+    },
+    [duration, phoneNumber, saveHistory]
+  );
 
   const handleHangUp = async () => {
     if (!callSid) {
@@ -91,18 +103,16 @@ export default function Home() {
     }
   };
 
-  // Duration Timer
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (callStatus === "in-progress") {
       interval = setInterval(() => {
-        setDuration(d => d + 1);
+        setDuration((d) => d + 1);
       }, 1000);
     }
     return () => clearInterval(interval);
   }, [callStatus]);
 
-  // Polling Status
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (callStatus !== "idle" && callSid) {
@@ -113,7 +123,9 @@ export default function Home() {
           if (data.success) {
             if (data.status === "in-progress" && callStatus === "dialing") {
               setCallStatus("in-progress");
-            } else if (["completed", "failed", "busy", "no-answer", "canceled"].includes(data.status)) {
+            } else if (
+              ["completed", "failed", "busy", "no-answer", "canceled"].includes(data.status)
+            ) {
               endCall(data.status === "completed" ? "Completed" : "Failed");
             }
           }
@@ -123,160 +135,616 @@ export default function Home() {
       }, 3000);
     }
     return () => clearInterval(interval);
-  }, [callStatus, callSid, duration, phoneNumber]);
+  }, [callStatus, callSid, endCall]);
 
   const formatDuration = (seconds: number) => {
     const m = Math.floor(seconds / 60);
     const s = seconds % 60;
-    return `${m}m ${s}s`;
+    return `${m}m ${String(s).padStart(2, "0")}s`;
   };
 
   return (
-    <div className="min-h-screen bg-[#fafafa] font-sans text-slate-900 pb-20">
+    <div style={{ minHeight: "100vh", background: "var(--bg-page)" }}>
+      <main
+        style={{
+          maxWidth: "600px",
+          margin: "0 auto",
+          padding: "80px 20px 100px",
+        }}
+      >
+        {/* Header */}
+        <div style={{ textAlign: "center", marginBottom: "48px" }}>
+          <h1
+            style={{
+              fontSize: "32px",
+              fontWeight: 800,
+              color: "var(--text-primary)",
+              letterSpacing: "-0.03em",
+              lineHeight: 1.2,
+              margin: "0 0 8px",
+            }}
+          >
+            Dial Pilot
+          </h1>
+          <p
+            style={{
+              fontSize: "15px",
+              color: "var(--text-secondary)",
+              lineHeight: 1.5,
+              margin: 0,
+            }}
+          >
+            Configure your voice agent and start a call.
+          </p>
+        </div>
 
-      {/* Brand Header */}
-      <div className="flex items-center justify-center pt-10 pb-6 gap-2 font-bold text-2xl tracking-tight">
-        <svg className="w-8 h-8 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
-        </svg>
-        Dial Pilot
-      </div>
-
-      <div className="max-w-4xl mx-auto px-4 space-y-8">
-
-        {/* Configure Agent Card */}
-        <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-8">
-          <div className="flex items-center justify-between mb-8 border-b border-gray-100 pb-4">
-            <h2 className="text-xl font-bold">Configure Agent</h2>
-            <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-          </div>
-
+        {/* Form Card */}
+        <div
+          style={{
+            background: "var(--bg-card)",
+            border: "1px solid var(--border-subtle)",
+            borderRadius: "14px",
+            padding: "32px",
+            marginBottom: "20px",
+          }}
+        >
           <form onSubmit={handleStartCall}>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-
-              {/* Left Column */}
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-2 uppercase tracking-wider">Target Phone Number</label>
-                <div className="flex">
-                  <input
-                    type="tel"
-                    value={phoneNumber}
-                    onChange={(e) => setPhoneNumber(e.target.value)}
-                    placeholder="(555) 123-4567"
-                    required
-                    className="w-full border border-gray-300 rounded-r-lg px-4 py-2.5 text-sm focus:ring-1 focus:ring-black outline-none"
-                  />
+            {/* Phone Number */}
+            <div style={{ marginBottom: "20px" }}>
+              <label
+                htmlFor="phone-input"
+                style={{
+                  display: "block",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  color: "var(--text-primary)",
+                  marginBottom: "6px",
+                }}
+              >
+                Phone number
+              </label>
+              <div style={{ position: "relative" }}>
+                <div
+                  style={{
+                    position: "absolute",
+                    left: "12px",
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    color: "var(--text-tertiary)",
+                    display: "flex",
+                    alignItems: "center",
+                    pointerEvents: "none",
+                  }}
+                >
+                  <Phone size={14} strokeWidth={2} />
                 </div>
-              </div>
-
-              {/* Right Column */}
-              <div>
-                <div className="flex justify-between items-center mb-2">
-                  <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider">Agent Instructions (System Prompt)</label>
-                  <span className="text-xs text-gray-400">{prompt.length}/500</span>
-                </div>
-                <textarea
-                  value={prompt}
-                  onChange={(e) => setPrompt(e.target.value.slice(0, 500))}
-                  placeholder="You are Dial Pilot, an intelligent assistant. Your goal is to..."
+                <input
+                  id="phone-input"
+                  type="tel"
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value)}
+                  placeholder="+91 98765 43210"
                   required
-                  rows={4}
-                  className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:ring-1 focus:ring-black outline-none resize-none"
+                  style={{
+                    width: "100%",
+                    padding: "10px 12px 10px 36px",
+                    fontSize: "14px",
+                    color: "var(--text-primary)",
+                    background: "var(--bg-page)",
+                    border: "1px solid var(--border-input)",
+                    borderRadius: "8px",
+                    outline: "none",
+                    transition: "border-color 0.15s, box-shadow 0.15s",
+                    fontFamily: "inherit",
+                  }}
+                  onFocus={(e) => {
+                    e.currentTarget.style.borderColor = "var(--text-primary)";
+                    e.currentTarget.style.boxShadow = "0 0 0 3px rgba(0,0,0,0.04)";
+                  }}
+                  onBlur={(e) => {
+                    e.currentTarget.style.borderColor = "var(--border-input)";
+                    e.currentTarget.style.boxShadow = "none";
+                  }}
                 />
               </div>
             </div>
 
-            {/* Form CTA */}
-            <div className="flex justify-end pt-4 border-t border-gray-100">
-              <button
-                type="submit"
-                disabled={callStatus !== "idle"}
-                className="flex items-center gap-2 bg-black text-white px-6 py-3 rounded-lg text-sm font-medium hover:bg-gray-800 disabled:opacity-50 transition-colors"
+            {/* Prompt */}
+            <div style={{ marginBottom: "24px" }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: "6px",
+                }}
               >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                </svg>
-                {callStatus === "idle" ? "Start AI Call ⌘K" : "Call in Progress..."}
-              </button>
+                <label
+                  htmlFor="prompt-input"
+                  style={{
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    color: "var(--text-primary)",
+                  }}
+                >
+                  Agent instructions
+                </label>
+                <span
+                  style={{
+                    fontSize: "11px",
+                    color: "var(--text-tertiary)",
+                    fontVariantNumeric: "tabular-nums",
+                  }}
+                >
+                  {prompt.length}/500
+                </span>
+              </div>
+              <textarea
+                id="prompt-input"
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value.slice(0, 500))}
+                placeholder="Describe what you want the AI to do on the call..."
+                required
+                rows={5}
+                style={{
+                  width: "100%",
+                  padding: "12px 14px",
+                  fontSize: "14px",
+                  color: "var(--text-primary)",
+                  background: "var(--bg-page)",
+                  border: "1px solid var(--border-input)",
+                  borderRadius: "8px",
+                  outline: "none",
+                  resize: "none",
+                  lineHeight: 1.6,
+                  transition: "border-color 0.15s, box-shadow 0.15s",
+                  fontFamily: "inherit",
+                }}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = "var(--text-primary)";
+                  e.currentTarget.style.boxShadow = "0 0 0 3px rgba(0,0,0,0.04)";
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = "var(--border-input)";
+                  e.currentTarget.style.boxShadow = "none";
+                }}
+              />
             </div>
+
+            {/* Submit */}
+            <button
+              id="start-call-btn"
+              type="submit"
+              disabled={callStatus !== "idle"}
+              style={{
+                width: "100%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "8px",
+                padding: "12px",
+                fontSize: "14px",
+                fontWeight: 600,
+                color: "#fff",
+                background: callStatus !== "idle" ? "#999" : "var(--accent-black)",
+                border: "none",
+                borderRadius: "8px",
+                cursor: callStatus !== "idle" ? "not-allowed" : "pointer",
+                transition: "background 0.15s, transform 0.1s",
+                fontFamily: "inherit",
+                letterSpacing: "-0.01em",
+              }}
+              onMouseEnter={(e) => {
+                if (callStatus === "idle") {
+                  e.currentTarget.style.background = "#1a1a1a";
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (callStatus === "idle") {
+                  e.currentTarget.style.background = "var(--accent-black)";
+                }
+              }}
+            >
+              <Phone size={15} strokeWidth={2.5} />
+              {callStatus === "idle" ? "Start Call" : "Calling..."}
+            </button>
           </form>
         </div>
 
-        {/* Dynamic Call Controller (Only shows when active) */}
-        <div className={`transition-all duration-500 overflow-hidden ${callStatus !== "idle" ? "max-h-48 opacity-100" : "max-h-0 opacity-0"}`}>
-          <div className="bg-white border border-red-200 shadow-lg ring-1 ring-red-50 rounded-xl p-6 flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="h-12 w-12 rounded-full bg-red-50 text-red-500 flex items-center justify-center relative">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-20"></span>
-                <svg className="w-6 h-6 relative z-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-                </svg>
+        {/* Active Call */}
+        <div
+          style={{
+            maxHeight: callStatus !== "idle" ? "160px" : "0",
+            opacity: callStatus !== "idle" ? 1 : 0,
+            overflow: "hidden",
+            transition: "max-height 0.35s ease, opacity 0.25s ease, margin 0.35s ease",
+            marginBottom: callStatus !== "idle" ? "20px" : "0",
+          }}
+        >
+          <div
+            style={{
+              background: "#fef2f2",
+              border: "1px solid #fecaca",
+              borderRadius: "10px",
+              padding: "16px 20px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              flexWrap: "wrap",
+              gap: "12px",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+              <div
+                style={{
+                  position: "relative",
+                  width: "36px",
+                  height: "36px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <div
+                  className="pulse-ring"
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    borderRadius: "50%",
+                    background: "rgba(239, 68, 68, 0.15)",
+                  }}
+                />
+                <div
+                  style={{
+                    width: "36px",
+                    height: "36px",
+                    borderRadius: "50%",
+                    background: "#fee2e2",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    position: "relative",
+                    zIndex: 1,
+                  }}
+                >
+                  <Mic size={16} color="#ef4444" strokeWidth={2.5} />
+                </div>
               </div>
               <div>
-                <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Active Connection</p>
-                <h3 className="text-lg font-bold text-red-600">{callStatus === "dialing" ? "Dialing..." : "Live Call"}</h3>
-                <p className="text-xs font-mono text-red-500 font-medium mt-1">{callStatus === "dialing" ? "Connecting to destination" : formatDuration(duration)}</p>
+                <p
+                  style={{
+                    fontSize: "13px",
+                    fontWeight: 700,
+                    color: "#b91c1c",
+                    margin: "0 0 1px",
+                  }}
+                >
+                  {callStatus === "dialing" ? "Dialing..." : "Live"}
+                </p>
+                <p
+                  style={{
+                    fontSize: "12px",
+                    fontWeight: 500,
+                    color: "#dc2626",
+                    margin: 0,
+                    fontVariantNumeric: "tabular-nums",
+                  }}
+                >
+                  {callStatus === "dialing" ? "Connecting" : formatDuration(duration)}
+                </p>
               </div>
             </div>
-
-            <button onClick={handleHangUp} className="bg-red-50 hover:bg-red-100 text-red-600 text-sm font-semibold px-6 py-3 rounded-lg border border-red-200 shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5">
-              End Call Now
+            <button
+              id="end-call-btn"
+              onClick={handleHangUp}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "8px 16px",
+                fontSize: "13px",
+                fontWeight: 600,
+                color: "#dc2626",
+                background: "#fff",
+                border: "1px solid #fecaca",
+                borderRadius: "6px",
+                cursor: "pointer",
+                transition: "background 0.1s",
+                fontFamily: "inherit",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "#fef2f2";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "#fff";
+              }}
+            >
+              <PhoneOff size={13} strokeWidth={2.5} />
+              End
             </button>
           </div>
         </div>
 
-        {/* Recent Dispatches Table */}
-        <div className="pt-6">
-          <h2 className="text-xl font-bold mb-6">Recent Dispatches</h2>
-          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-gray-50 text-gray-500 uppercase text-xs tracking-wider border-b border-gray-200">
-                <tr>
-                  <th className="px-6 py-4 font-medium">Target Number</th>
-                  <th className="px-6 py-4 font-medium">Status</th>
-                  <th className="px-6 py-4 font-medium">Duration</th>
-                  <th className="px-6 py-4 font-medium">Date & Time</th>
-                  <th className="px-6 py-4 font-medium text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {history.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="px-6 py-8 text-center text-gray-400">
-                      No recent calls found. Start a call to see it here!
-                    </td>
-                  </tr>
-                ) : (
-                  history.map((call, idx) => (
-                    <tr key={idx} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-6 py-4 font-medium">{call.target}</td>
-                      <td className="px-6 py-4">
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${call.status === 'Completed' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${call.status === 'Completed' ? 'bg-green-500' : 'bg-red-500'}`}></span>
+        {/* History */}
+        <div>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginBottom: "12px",
+            }}
+          >
+            <h2
+              style={{
+                fontSize: "15px",
+                fontWeight: 700,
+                color: "var(--text-primary)",
+                letterSpacing: "-0.01em",
+                margin: 0,
+              }}
+            >
+              History
+            </h2>
+            {history.length > 0 && (
+              <span
+                style={{
+                  fontSize: "12px",
+                  color: "var(--text-tertiary)",
+                }}
+              >
+                {history.length}
+              </span>
+            )}
+          </div>
+
+          <div
+            style={{
+              background: "var(--bg-card)",
+              border: "1px solid var(--border-subtle)",
+              borderRadius: "10px",
+              overflow: "hidden",
+            }}
+          >
+            {history.length === 0 ? (
+              <div style={{ padding: "48px 20px", textAlign: "center" }}>
+                <div
+                  style={{
+                    width: "40px",
+                    height: "40px",
+                    borderRadius: "10px",
+                    background: "var(--bg-page)",
+                    border: "1px solid var(--border-subtle)",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    marginBottom: "12px",
+                  }}
+                >
+                  <Clock size={18} color="var(--text-tertiary)" strokeWidth={1.5} />
+                </div>
+                <p
+                  style={{
+                    fontSize: "13px",
+                    fontWeight: 500,
+                    color: "var(--text-secondary)",
+                    margin: "0 0 4px",
+                  }}
+                >
+                  No calls yet
+                </p>
+                <p style={{ fontSize: "12px", color: "var(--text-tertiary)", margin: 0 }}>
+                  Your call history will appear here
+                </p>
+              </div>
+            ) : (
+              <>
+                {/* Desktop header */}
+                <div
+                  className="history-header"
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1.4fr 1fr 0.8fr 1.2fr 40px",
+                    padding: "10px 16px",
+                    borderBottom: "1px solid var(--border-subtle)",
+                    background: "var(--bg-page)",
+                  }}
+                >
+                  {["Number", "Status", "Duration", "Date", ""].map((col) => (
+                    <span
+                      key={col}
+                      style={{
+                        fontSize: "11px",
+                        fontWeight: 600,
+                        color: "var(--text-tertiary)",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.05em",
+                      }}
+                    >
+                      {col}
+                    </span>
+                  ))}
+                </div>
+
+                {history.map((call, idx) => (
+                  <div key={idx}>
+                    {/* Desktop */}
+                    <div
+                      className="history-row"
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "1.4fr 1fr 0.8fr 1.2fr 40px",
+                        padding: "12px 16px",
+                        alignItems: "center",
+                        borderBottom:
+                          idx < history.length - 1 ? "1px solid var(--border-subtle)" : "none",
+                        transition: "background 0.1s",
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = "var(--bg-page)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = "transparent";
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: "13px",
+                          fontWeight: 500,
+                          color: "var(--text-primary)",
+                          fontVariantNumeric: "tabular-nums",
+                        }}
+                      >
+                        {call.target}
+                      </span>
+                      <span>
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "5px",
+                            fontSize: "11px",
+                            fontWeight: 500,
+                            color: call.status === "Completed" ? "#16a34a" : "#dc2626",
+                            background: call.status === "Completed" ? "#f0fdf4" : "#fef2f2",
+                            padding: "3px 8px",
+                            borderRadius: "100px",
+                          }}
+                        >
+                          <span
+                            style={{
+                              width: "5px",
+                              height: "5px",
+                              borderRadius: "50%",
+                              background: call.status === "Completed" ? "#22c55e" : "#ef4444",
+                            }}
+                          />
                           {call.status}
                         </span>
-                      </td>
-                      <td className="px-6 py-4 text-gray-600">{call.duration > 0 ? formatDuration(call.duration) : "0m 0s"}</td>
-                      <td className="px-6 py-4 text-gray-600">{call.date}</td>
-                      <td className="px-6 py-4 text-right">
-                        <button className="text-gray-400 hover:text-black">
-                          <svg className="w-5 h-5 inline" fill="currentColor" viewBox="0 0 20 20">
-                            <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
-                          </svg>
+                      </span>
+                      <span
+                        style={{
+                          fontSize: "12px",
+                          color: "var(--text-secondary)",
+                          fontVariantNumeric: "tabular-nums",
+                        }}
+                      >
+                        {call.duration > 0 ? formatDuration(call.duration) : "0m 00s"}
+                      </span>
+                      <span style={{ fontSize: "12px", color: "var(--text-secondary)" }}>
+                        {call.date}
+                      </span>
+                      <span style={{ display: "flex", justifyContent: "flex-end" }}>
+                        <button
+                          style={{
+                            background: "none",
+                            border: "none",
+                            padding: "4px",
+                            cursor: "pointer",
+                            color: "var(--text-tertiary)",
+                            display: "flex",
+                            alignItems: "center",
+                            transition: "color 0.1s",
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.color = "var(--text-primary)";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.color = "var(--text-tertiary)";
+                          }}
+                        >
+                          <MoreVertical size={14} />
                         </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                      </span>
+                    </div>
+
+                    {/* Mobile */}
+                    <div
+                      className="history-row-mobile"
+                      style={{
+                        display: "none",
+                        padding: "14px 16px",
+                        borderBottom:
+                          idx < history.length - 1 ? "1px solid var(--border-subtle)" : "none",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          marginBottom: "6px",
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontSize: "13px",
+                            fontWeight: 600,
+                            color: "var(--text-primary)",
+                            fontVariantNumeric: "tabular-nums",
+                          }}
+                        >
+                          {call.target}
+                        </span>
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "4px",
+                            fontSize: "11px",
+                            fontWeight: 500,
+                            color: call.status === "Completed" ? "#16a34a" : "#dc2626",
+                            background: call.status === "Completed" ? "#f0fdf4" : "#fef2f2",
+                            padding: "2px 7px",
+                            borderRadius: "100px",
+                          }}
+                        >
+                          <span
+                            style={{
+                              width: "4px",
+                              height: "4px",
+                              borderRadius: "50%",
+                              background: call.status === "Completed" ? "#22c55e" : "#ef4444",
+                            }}
+                          />
+                          {call.status}
+                        </span>
+                      </div>
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: "12px",
+                          fontSize: "11px",
+                          color: "var(--text-tertiary)",
+                        }}
+                      >
+                        <span style={{ fontVariantNumeric: "tabular-nums" }}>
+                          {call.duration > 0 ? formatDuration(call.duration) : "0m 00s"}
+                        </span>
+                        <span>{call.date}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
           </div>
         </div>
+      </main>
 
-      </div>
+      <style jsx>{`
+        @media (max-width: 640px) {
+          .history-header {
+            display: none !important;
+          }
+          .history-row {
+            display: none !important;
+          }
+          .history-row-mobile {
+            display: block !important;
+          }
+        }
+      `}</style>
     </div>
   );
 }
