@@ -29,9 +29,9 @@ function initTables() {
 
 initTables();
 
-/**
- * Decodes Twilio's base64 mu-law 8kHz payload to PCM16 16kHz base64 payload for Gemini.
- */
+
+ // Decodes Twilio's base64 mu-law 8kHz payload to PCM16 16kHz base64 payload for Gemini.
+ 
 export function twilioToGemini(base64Mulaw: string): string {
   const mulawBuffer = Buffer.from(base64Mulaw, "base64");
   const pcmBuffer = Buffer.alloc(mulawBuffer.length * 4); 
@@ -46,9 +46,8 @@ export function twilioToGemini(base64Mulaw: string): string {
   return pcmBuffer.toString("base64");
 }
 
-/**
- * Decodes Gemini's base64 PCM16 24kHz payload to mu-law 8kHz base64 payload for Twilio.
- */
+//  Decodes Gemini's base64 PCM16 24kHz payload to mu-law 8kHz base64 payload for Twilio.
+
 export function geminiToTwilio(base64Pcm: string): string {
   const pcmBuffer = Buffer.from(base64Pcm, "base64");
   const numSamples = pcmBuffer.length / 2;
