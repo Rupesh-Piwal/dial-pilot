@@ -18,20 +18,20 @@ app.get("/", (req, res) => {
 
 wss.on("connection", (twilioWs: WebSocket) => {
   console.log("New Twilio WebSocket connection established.");
-  
+
   let streamSid: string | null = null;
   let geminiWs: WebSocket | null = null;
   let audioBuffer: string[] = [];
-  
+
   const initializeGemini = (prompt: string) => {
     const geminiWsUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${process.env.GEMINI_API_KEY}`;
     geminiWs = new WebSocket(geminiWsUrl);
 
     geminiWs.on("open", () => {
       console.log("Connected to Gemini Multimodal Live API.");
-      
+
       const systemInstructionText = prompt || "You are a helpful AI voice assistant named Dial Pilot. You are having a phone conversation with a user. Keep your answers extremely concise and conversational. Do not use markdown.";
-      
+
       const setupMessage = {
         setup: {
           model: "models/gemini-2.5-flash-native-audio-preview-12-2025",
@@ -47,6 +47,7 @@ wss.on("connection", (twilioWs: WebSocket) => {
 
       // Flush audio buffer
       if (audioBuffer.length > 0) {
+        console.log(`[AudioBuffer] Gemini connected! Flushing ${audioBuffer.length} buffered packet(s) to Gemini.`);
         for (const payload of audioBuffer) {
           const pcmData = twilioToGemini(payload);
           const mediaMessage = {
@@ -66,7 +67,7 @@ wss.on("connection", (twilioWs: WebSocket) => {
     geminiWs.on("message", (data: WebSocket.Data) => {
       try {
         const response = JSON.parse(data.toString());
-        
+
         if (response.setupComplete) console.log("Gemini Setup Complete!");
         if (response.error) console.error("Gemini Error:", response.error);
 
@@ -85,7 +86,7 @@ wss.on("connection", (twilioWs: WebSocket) => {
             }
           }
         }
-        
+
         if (response.serverContent && response.serverContent.interrupted) {
           console.log("Gemini interrupted by user.");
           if (streamSid) {
@@ -112,7 +113,7 @@ wss.on("connection", (twilioWs: WebSocket) => {
   twilioWs.on("message", (message: string) => {
     try {
       const msg = JSON.parse(message);
-      
+
       switch (msg.event) {
         case "connected":
           console.log("Twilio Media Stream Connected");
@@ -138,6 +139,7 @@ wss.on("connection", (twilioWs: WebSocket) => {
             geminiWs.send(JSON.stringify(mediaMessage));
           } else {
             // Buffer the audio payload if Gemini is not ready yet
+            console.log(`[AudioBuffer] Gemini socket not ready. Buffering incoming Twilio audio packet #${audioBuffer.length + 1}`);
             audioBuffer.push(msg.media.payload);
           }
           break;
